@@ -1,0 +1,20 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore Virtual Environment
+venv/
+env/
+
+# Ignore Piper Binary & Models (We download these in setup.sh)
+piper/piper
+piper/*.onnx
+piper/*.json
+
+# Keep the directory structure, but ignore contents if you want
+# (Optional: remove this if you want to commit your custom sounds)
+sounds/*
+!sounds/.gitkeep
+
+# Ignore system files
+.DS_Store
