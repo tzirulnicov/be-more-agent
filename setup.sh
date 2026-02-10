@@ -8,8 +8,13 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}🤖 Pi Local Assistant Setup Script${NC}"
 
-# 1. Create necessary directories
-echo -e "${YELLOW}[1/5] Creating folders...${NC}"
+# 1. Install System Dependencies (The "Hidden" Requirements)
+echo -e "${YELLOW}[1/6] Installing System Tools (apt)...${NC}"
+sudo apt update
+sudo apt install -y python3-tk libasound2-dev libportaudio2 libatlas-base-dev cmake build-essential
+
+# 2. Create Folders
+echo -e "${YELLOW}[2/6] Creating Folders...${NC}"
 mkdir -p piper
 mkdir -p sounds/greeting_sounds
 mkdir -p sounds/thinking_sounds
@@ -22,40 +27,36 @@ mkdir -p faces/speaking
 mkdir -p faces/error
 mkdir -p faces/warmup
 
-# 2. Download Piper (Architecture Check)
-echo -e "${YELLOW}[2/5] Checking Architecture...${NC}"
+# 3. Download Piper (Architecture Check)
+echo -e "${YELLOW}[3/6] Setting up Piper TTS...${NC}"
 ARCH=$(uname -m)
 if [ "$ARCH" == "aarch64" ]; then
-    echo -e "${GREEN}Detected Raspberry Pi (aarch64). Downloading Piper...${NC}"
-    wget -O piper.tar.gz https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_aarch64.tar.gz
+    # FIXED: Updated URL to the working 2023.11.14-2 release
+    wget -O piper.tar.gz https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz
     tar -xvf piper.tar.gz -C .
     rm piper.tar.gz
 else
-    echo -e "${RED}⚠️  System is not aarch64. You may need to download the correct Piper binary manually.${NC}"
+    echo -e "${RED}⚠️  Not on Raspberry Pi (aarch64). Skipping Piper download.${NC}"
 fi
 
-# 3. Download Voice Model (En-GB Semaine)
-echo -e "${YELLOW}[3/5] Downloading Voice Model...${NC}"
+# 4. Download Voice Model
+echo -e "${YELLOW}[4/6] Downloading Voice Model...${NC}"
 cd piper
 wget -nc -O en_GB-semaine-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx
 wget -nc -O en_GB-semaine-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx.json
 cd ..
 
-# 4. Install Python Dependencies
-echo -e "${YELLOW}[4/5] Installing Python Libraries...${NC}"
-pip install sounddevice numpy openwakeword ollama ddgs scipy pillow
+# 5. Install Python Libraries
+echo -e "${YELLOW}[5/6] Installing Python Libraries...${NC}"
+pip install -r requirements.txt
 
-# 5. Pull Ollama Models (The Brains)
-echo -e "${YELLOW}[5/5] downloading AI Models (Ollama)...${NC}"
+# 6. Pull AI Models
+echo -e "${YELLOW}[6/6] Checking AI Models...${NC}"
 if command -v ollama &> /dev/null; then
-    echo "Pulling Chat Model (gemma3:1b)..."
     ollama pull gemma3:1b
-    
-    echo "Pulling Vision Model (moondream)..."
     ollama pull moondream
 else
-    echo -e "${RED}❌ Ollama is not installed!${NC}"
-    echo "Please install it first by running: curl -fsSL https://ollama.com/install.sh | sh"
+    echo -e "${RED}❌ Ollama not found. Please install it manually.${NC}"
 fi
 
-echo -e "${GREEN}✨ Setup Complete! You can now run: python agent.py${NC}"
+echo -e "${GREEN}✨ Setup Complete! Don't forget to add your 'wakeword.onnx' file!${NC}"
