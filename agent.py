@@ -358,9 +358,18 @@ class BotGUI:
 
     def transcribe_audio(self, filename):
         try:
-            res = subprocess.run(["./piper/whisper-cli", "-m", "./piper/ggml-base.en.bin", "-l", "en", "-t", "4", "-f", filename, "--no-timestamps"], capture_output=True, text=True)
+            cmd = [
+                "./whisper.cpp/main", 
+                "-m", "./whisper.cpp/models/ggml-base.en.bin", 
+                "-f", filename, 
+                "--no-timestamps"  
+            ]
+            
+            res = subprocess.run(cmd, capture_output=True, text=True)
             return res.stdout.strip()
-        except: return None
+        except Exception as e:
+            print(f"Transcription Error: {e}")
+            return None
 
     def chat_and_respond(self, text, img_path=None):
         if "reset memory" in text.lower():
