@@ -48,14 +48,14 @@ cmake -B build
 cmake --build build -j --config Release
 cd ..
 
-# 4. Download Voice Model
+# 5. Download Voice Model
 echo -e "${YELLOW}[4/6] Downloading Voice Model...${NC}"
 cd piper
 wget -nc -O en_GB-semaine-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx
 wget -nc -O en_GB-semaine-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx.json
 cd ..
 
-# 5. Install Python Libraries
+# 6. Install Python Libraries
 echo -e "${YELLOW}[5/6] Installing Python Libraries...${NC}"
 # Check if venv exists, if not create it
 if [ ! -d "venv" ]; then
@@ -65,7 +65,7 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 6. Pull AI Models
+# 7. Pull AI Models
 echo -e "${YELLOW}[6/6] Checking AI Models...${NC}"
 if command -v ollama &> /dev/null; then
     ollama pull gemma3:1b
@@ -74,7 +74,7 @@ else
     echo -e "${RED}❌ Ollama not found. Please install it manually.${NC}"
 fi
 
-# 7. OpenWakeWord Model (Added this back so the user has a default)
+# 8. OpenWakeWord Model (Added this back so the user has a default)
 if [ ! -f "models/wakeword.onnx" ]; then
     echo -e "${YELLOW}Downloading default 'Hey Jarvis' wake word...${NC}"
     curl -L -o wakeword.onnx https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_jarvis_v0.1.onnx
