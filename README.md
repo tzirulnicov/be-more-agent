@@ -21,10 +21,18 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 
 ## 🛠️ Hardware Requirements
 
-* **Raspberry Pi 5** (Recommended) or Pi 4 (4GB RAM minimum)
+* **Raspberry Pi 5** (Recommended) or Pi 4 (4GB RAM minimum) - i used Raspberry Pi 5 (16GB)
 * USB Microphone & Speaker
-* LCD Screen (DSI or HDMI)
-* Raspberry Pi Camera Module
+* LCD Screen (DSI or HDMI) - i used Freenove 5-inch touchscreen display
+* Raspberry Pi Camera Module - i used Raspberry Pi Camera Module v2
+
+## 🔧 Additional Hardware: 
+* Pimoroni NVMe Base Duo
+* Geekworm X1203 5V UPS shield
+* Adafruit Feather 32u4 Basic Proto
+* 3.7V lithium ion battery
+* 6mm momentary switches x 7
+* 5x2mm round magnets x 16
 
 ---
 
@@ -40,6 +48,10 @@ be-more-agent/
 ├── requirements.txt           # Python dependencies
 ├── whisper.cpp/               # Speech-to-Text engine
 ├── piper/                     # Piper TTS engine & voice models
+├── models/                    # ONNX models
+│   ├── wakeword.onnx          # Model for OpenWakeWord engine
+├── stl/                       # Case files for 3d printing
+├── pcb/                       # PCB file
 ├── sounds/                    # Sound effects folder
 │   ├── greeting_sounds/       # Startup .wav files
 │   ├── thinking_sounds/       # Looping .wav files
@@ -78,7 +90,7 @@ ollama pull moondream
 
 ### 3. Clone & Setup
 ```bash
-git clone https://github.com/brenpoly/be-more-agent.git
+git clone https://github.com/tzirulnicov/be-more-agent.git
 cd be-more-agent
 chmod +x setup.sh
 ./setup.sh

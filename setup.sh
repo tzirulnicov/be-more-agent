@@ -66,7 +66,7 @@ else
 fi
 
 # 7. OpenWakeWord Model (Added this back so the user has a default)
-if [ ! -f "wakeword.onnx" ]; then
+if [ ! -f "models/wakeword.onnx" ]; then
     echo -e "${YELLOW}Downloading default 'Hey Jarvis' wake word...${NC}"
     curl -L -o wakeword.onnx https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_jarvis_v0.1.onnx
 fi

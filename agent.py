@@ -53,7 +53,7 @@ from ddgs import DDGS
 CONFIG_FILE = "config.json"
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
-WAKE_WORD_MODEL = "./wakeword.onnx"
+WAKE_WORD_MODEL = "./models/wakeword.onnx"
 WAKE_WORD_THRESHOLD = 0.5
 
 # HARDWARE SETTINGS
