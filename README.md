@@ -42,14 +42,13 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 be-more-agent/
 ├── agent.py                   # The main brain script
 ├── setup.sh                   # Auto-installer script
-├── wakeword.onnx              # OpenWakeWord model (The "Ear")
 ├── config.json                # User settings (Models, Prompt, Hardware)
 ├── chat_memory.json           # Conversation history
 ├── requirements.txt           # Python dependencies
 ├── whisper.cpp/               # Speech-to-Text engine
 ├── piper/                     # Piper TTS engine & voice models
 ├── models/                    # ONNX models
-│   ├── wakeword.onnx          # Model for OpenWakeWord engine
+│   ├── wakeword.onnx          # OpenWakeWord model 
 ├── stl/                       # Case files for 3d printing
 ├── pcb/                       # PCB file
 ├── sounds/                    # Sound effects folder

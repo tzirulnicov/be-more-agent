@@ -39,6 +39,15 @@ else
     echo -e "${RED}⚠️  Not on Raspberry Pi (aarch64). Skipping Piper download.${NC}"
 fi
 
+# 4. Download Whisper.cpp
+echo -e "${YELLOW}[4/6] Downloading Whisper.cpp...${NC}"
+git clone https://github.com/ggml-org/whisper.cpp.git
+cd whisper.cpp
+sh ./models/download-ggml-model.sh base
+cmake -B build
+cmake --build build -j --config Release
+cd ..
+
 # 4. Download Voice Model
 echo -e "${YELLOW}[4/6] Downloading Voice Model...${NC}"
 cd piper
