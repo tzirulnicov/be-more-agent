@@ -84,7 +84,7 @@ curl -fsSL https://ollama.com/install.sh| sh
 ```
 *Pull the required models:*
 ```bash
-ollama pull gemma:2b
+ollama pull gemma3:1b
 ollama pull moondream
 ```
 
