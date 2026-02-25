@@ -16,7 +16,7 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 * **Hardware-Aware Audio**: Automatically detects your microphone's sample rate and resamples audio on the fly to prevent ALSA errors.
 * **Smart Web Search**: Uses DuckDuckGo to find real-time news and information when the LLM doesn't know the answer.
 * **Reactive Faces**: The GUI updates the character's face based on its state (Listening, Thinking, Speaking, Idle).
-* **Fast Text-to-Speech**: Uses **Piper TTS** for low-latency, high-quality voice generation on the Pi.
+* **Fast Text-to-Speech**: Uses **Silero TTS** for low-latency, high-quality voice generation on the Pi.
 * **Vision Capable**: Can "see" and describe the world using a connected camera and the **Moondream** vision model.
 
 ## 🛠️ Hardware Requirements
@@ -42,15 +42,14 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 be-more-agent/
 ├── agent.py                   # The main brain script
 ├── setup.sh                   # Auto-installer script
-├── config.json                # User settings (Models, Prompt, Hardware)
+├── config.yaml                # User settings (Models, Prompt, Hardware)
 ├── chat_memory.json           # Conversation history
 ├── requirements.txt           # Python dependencies
 ├── whisper.cpp/               # Speech-to-Text engine
-├── piper/                     # Piper TTS engine & voice models
 ├── models/                    # ONNX models
 │   ├── wakeword.onnx          # OpenWakeWord model 
 ├── stl/                       # Case files for 3d printing
-├── pcb/                       # PCB file
+├── pcb/                       # Button controller Gerber files
 ├── sounds/                    # Sound effects folder
 │   ├── greeting_sounds/       # Startup .wav files
 │   ├── thinking_sounds/       # Looping .wav files
@@ -110,19 +109,18 @@ python agent.py
 
 ---
 
-## 📂 Configuration (`config.json`)
+## 📂 Configuration (`config.yaml`)
 
-You can modify the hardware behavior and personality in `config.json`. The `agent.py` script creates this on the first run if it doesn't exist, but you can create it manually:
+You can modify the hardware behavior and personality in `config.yaml`. The `agent.py` script creates and reads this file (falling back to legacy `config.json` if present), but you can create it manually:
 
-```json
-{
-    "text_model": "gemma3:1b",
-    "vision_model": "moondream",
-    "voice_model": "piper/en_GB-semaine-medium.onnx",
-    "chat_memory": true,
-    "camera_rotation": 0,
-    "system_prompt_extras": "You are a helpful robot assistant. Keep responses short and cute."
-}
+```yaml
+text_model: gemma3:1b
+vision_model: moondream
+voice_model: en_0
+chat_memory: true
+camera_rotation: 0
+system_prompt_extras: >
+  You are a helpful robot assistant. Keep responses short and cute.
 ```
 
 ---
@@ -140,7 +138,7 @@ This software is a generic framework. You can give it a new personality by repla
 
 * **"No search library found":** If web search fails, ensure you are in the virtual environment and `duckduckgo-search` is installed via pip.
 * **Shutdown Errors:** When you exit the script (Ctrl+C), you might see `Expression 'alsa_snd_pcm_mmap_begin' failed`. **This is normal.** It just means the audio stream was cut off mid-sample. It does not affect the functionality.
-* **Audio Glitches:** If the voice sounds fast or slow, the script attempts to auto-detect sample rates. Ensure your `config.json` points to a valid `.onnx` voice model in the `piper/` folder.
+* **Audio Glitches:** If the voice sounds fast or slow, the script attempts to auto-detect sample rates. The `voice_model` field in `config.yaml` controls the Silero speaker id (for example `en_0`).
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.

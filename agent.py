@@ -28,7 +28,9 @@ import atexit
 import datetime
 import warnings
 import wave
-import struct 
+import struct
+import yaml
+import torch
 
 # Suppress harmless library warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
@@ -50,7 +52,7 @@ from ddgs import DDGS
 # 1. CONFIGURATION & CONSTANTS
 # =========================================================================
 
-CONFIG_FILE = "config.json"
+CONFIG_FILE = "config.yaml"
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
 WAKE_WORD_MODEL = "./models/wakeword.onnx"
@@ -62,7 +64,7 @@ INPUT_DEVICE_NAME = None
 DEFAULT_CONFIG = {
     "text_model": "gemma3:1b",
     "vision_model": "moondream",
-    "voice_model": "piper/en_GB-semaine-medium.onnx",
+    "voice_model": "en_0",  # Silero speaker id
     "chat_memory": True,
     "camera_rotation": 0,
     "system_prompt_extras": ""
@@ -77,20 +79,52 @@ OLLAMA_OPTIONS = {
     'top_p': 0.9
 }
 
+# Silero TTS settings (initialized after config load)
+SILERO_LANGUAGE = "en"
+SILERO_MODEL_ID = "v3_en"
+SILERO_SAMPLE_RATE = 48000
+SILERO_DEVICE = "cpu"
+SILERO_MODEL = None
+SILERO_SPEAKER_ID = "en_0"
+
 def load_config():
     config = DEFAULT_CONFIG.copy()
+    user_config = {}
+
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
-                user_config = json.load(f)
-                config.update(user_config)
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                if isinstance(data, dict):
+                    user_config = data
+                    config.update(user_config)
+                else:
+                    print("Config Error: YAML root is not a mapping. Ignoring user config.")
         except Exception as e:
-            print(f"Config Error: {e}. Using defaults.")
+            print(f"Config Error (YAML): {e}. Using defaults.")
     return config
 
 CURRENT_CONFIG = load_config()
 TEXT_MODEL = CURRENT_CONFIG["text_model"]
 VISION_MODEL = CURRENT_CONFIG["vision_model"]
+SILERO_SPEAKER_ID = CURRENT_CONFIG.get("voice_model", SILERO_SPEAKER_ID) or SILERO_SPEAKER_ID
+
+def init_silero_tts():
+    global SILERO_MODEL
+    if SILERO_MODEL is not None:
+        return
+    try:
+        print("[INIT] Loading Silero TTS...", flush=True)
+        model, _ = torch.hub.load(
+            repo_or_dir="snakers4/silero-models",
+            model="silero_tts",
+            language=SILERO_LANGUAGE,
+            speaker=SILERO_MODEL_ID,
+        )
+        SILERO_MODEL = model.to(SILERO_DEVICE)
+        print("[INIT] Silero TTS Loaded.", flush=True)
+    except Exception as e:
+        print(f"[CRITICAL] Failed to load Silero TTS: {e}", flush=True)
 
 class BotStates:
     IDLE = "idle"             
@@ -283,9 +317,10 @@ class BotGUI:
             self.thinking_sound_active.clear()
             with self.tts_queue_lock:
                 self.tts_queue.clear()
-            if self.current_audio_process:
-                try: self.current_audio_process.terminate()
-                except: pass
+            try:
+                sd.stop()
+            except Exception:
+                pass
             self.set_state(BotStates.IDLE, "Interrupted.")
 
     def load_animations(self):
@@ -486,6 +521,7 @@ class BotGUI:
             ollama.generate(model=TEXT_MODEL, prompt="", keep_alive=-1)
         except Exception as e:
             print(f"Failed to load {TEXT_MODEL}: {e}", flush=True)
+        init_silero_tts()
         self.play_sound(self.get_random_sound(greeting_sounds_dir))
         print("Models loaded.", flush=True)
 
@@ -803,63 +839,49 @@ class BotGUI:
 
     def speak(self, text):
         clean = re.sub(r"[^\w\s,.!?:-]", "", text)
-        if not clean.strip(): return
-        
-        print(f"[PIPER SPEAKING] '{clean}'", flush=True)
-        voice_model = CURRENT_CONFIG.get("voice_model", "piper/en_GB-semaine-medium.onnx")
-        
+        if not clean.strip():
+            return
+
+        print(f"[SILERO SPEAKING] '{clean}'", flush=True)
+
         try:
-            self.current_audio_process = subprocess.Popen(
-                ["./piper/piper", "--model", voice_model, "--output-raw"], 
-                stdin=subprocess.PIPE, 
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL
+            init_silero_tts()
+            if SILERO_MODEL is None:
+                print("Silero TTS is not available.", flush=True)
+                return
+
+            speaker_id = CURRENT_CONFIG.get("voice_model", SILERO_SPEAKER_ID) or SILERO_SPEAKER_ID
+            audio = SILERO_MODEL.apply_tts(
+                text=clean,
+                speaker=speaker_id,
+                sample_rate=SILERO_SAMPLE_RATE,
             )
-            
-            self.current_audio_process.stdin.write(clean.encode() + b'\n')
-            self.current_audio_process.stdin.close() 
+
+            audio_np = audio.detach().cpu().numpy()
+            self.current_volume = float(np.max(np.abs(audio_np))) if audio_np.size else 0.0
 
             try:
-                device_info = sd.query_devices(kind='output')
-                native_rate = int(device_info['default_samplerate'])
-            except:
-                native_rate = 48000 
+                sd.check_output_settings(device=None, samplerate=SILERO_SAMPLE_RATE)
+                playback_rate = SILERO_SAMPLE_RATE
+            except Exception:
+                try:
+                    device_info = sd.query_devices(kind='output')
+                    native_rate = int(device_info['default_samplerate'])
+                except Exception:
+                    native_rate = SILERO_SAMPLE_RATE
 
-            PIPER_RATE = 22050
-            use_native_rate = False
-            
-            try:
-                sd.check_output_settings(device=None, samplerate=PIPER_RATE)
-            except:
-                use_native_rate = True
+                playback_rate = native_rate
+                if native_rate != SILERO_SAMPLE_RATE and audio_np.size:
+                    num_samples = int(len(audio_np) * (native_rate / SILERO_SAMPLE_RATE))
+                    audio_np = scipy.signal.resample(audio_np, num_samples).astype(np.float32)
 
-            with sd.RawOutputStream(samplerate=native_rate if use_native_rate else PIPER_RATE, 
-                                    channels=1, dtype='int16', 
-                                    device=None, latency='low', blocksize=2048) as stream:
-                while True:
-                    if self.interrupted.is_set(): break
-                    data = self.current_audio_process.stdout.read(4096)
-                    if not data: break 
-                    
-                    audio_chunk = np.frombuffer(data, dtype=np.int16)
-                    if len(audio_chunk) > 0:
-                        self.current_volume = np.max(np.abs(audio_chunk))
-                        if use_native_rate:
-                            num_samples = int(len(audio_chunk) * (native_rate / PIPER_RATE))
-                            audio_chunk = scipy.signal.resample(audio_chunk, num_samples).astype(np.int16)
-                        stream.write(audio_chunk.tobytes())
-                    else:
-                        self.current_volume = 0
-                time.sleep(0.5) 
-                    
+            sd.play(audio_np, playback_rate)
+            sd.wait()
+
         except Exception as e:
             print(f"Audio Error: {e}")
         finally:
-            self.current_volume = 0 
-            if self.current_audio_process:
-                if self.current_audio_process.stdout: self.current_audio_process.stdout.close()
-                if self.current_audio_process.poll() is None: self.current_audio_process.terminate()
-                self.current_audio_process = None
+            self.current_volume = 0
 
     def _run_thinking_sound_loop(self):
         time.sleep(0.5)

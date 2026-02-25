@@ -6,3 +6,5 @@ onnxruntime
 ollama
 duckduckgo-search
 Pillow
+PyYAML
+torch
