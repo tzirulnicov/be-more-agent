@@ -23,15 +23,15 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 ## 🛠️ Hardware Requirements
 
 * **Raspberry Pi 5** (Recommended) or Pi 4 (4GB RAM minimum) - i used Raspberry Pi 5 (16GB)
-* USB Microphone & Speaker
-* LCD Screen (DSI or HDMI) - i used Freenove 5-inch touchscreen display
+* USB Microphone & Speaker - i used usb mic and max78357 audio amplifier
+* LCD Screen (DSI or HDMI) - i used Waveshare 5-inch touchscreen display
 * Raspberry Pi Camera Module - i used Raspberry Pi Camera Module v2
 
 ## 🔧 Additional Hardware: 
-* Pimoroni NVMe Base Duo
-* Geekworm X1203 5V UPS shield
-* Adafruit Feather 32u4 Basic Proto
-* 3.7V lithium ion battery
+* Spotpear X1002 PCIe NVMe adapter
+* Waveshare UPS HAT
+* Arduino Nano (usb keyboard emulation with Gyver EasyHID library)
+* 3.7V lithium ion battery 18650
 * 6mm momentary switches x 7
 * 5x2mm round magnets x 16
 
@@ -44,7 +44,8 @@ be-more-agent/
 ├── agent.py                   # The main brain script
 ├── setup.sh                   # Auto-installer script
 ├── config.yaml                # User settings (Models, Prompt, Hardware)
-├── memory.json           # Conversation history
+├── alsa.conf                  # ALSA config for usb mic and max78357 audio amplifier
+├── memory.json                # Conversation history
 ├── requirements.txt           # Python dependencies
 ├── whisper.cpp/               # Speech-to-Text engine
 ├── models/                    # ONNX models
@@ -97,9 +98,9 @@ chmod +x setup.sh
 *The setup script will install system libraries, create necessary folders, download Piper TTS, and set up the Python virtual environment.*
 
 ### 4. Configure the Wake Word
-The setup script downloads a default wake word ("Hey Jarvis"). To use your own:
+You can use default wake word ("Alexa"). To use your own:
 1. Train a model at [OpenWakeWord](https://github.com/dscripka/openWakeWord).
-2. Place the `.onnx` file in the root folder.
+2. Place the `.onnx` file in the models folder.
 3. Rename it to `wakeword.onnx`.
 
 ### 5. Run the Agent
