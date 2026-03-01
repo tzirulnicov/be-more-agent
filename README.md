@@ -17,6 +17,7 @@ This project turns a Raspberry Pi into a fully functional, conversational AI age
 * **Smart Web Search**: Uses DuckDuckGo to find real-time news and information when the LLM doesn't know the answer.
 * **Reactive Faces**: The GUI updates the character's face based on its state (Listening, Thinking, Speaking, Idle).
 * **Fast Text-to-Speech**: Uses **Silero TTS** for low-latency, high-quality voice generation on the Pi.
+* **Home Assistant support**: Uses **Home Assistant** for controlling devices in your home by voice.
 * **Vision Capable**: Can "see" and describe the world using a connected camera and the **Moondream** vision model.
 
 ## 🛠️ Hardware Requirements
@@ -43,7 +44,7 @@ be-more-agent/
 ├── agent.py                   # The main brain script
 ├── setup.sh                   # Auto-installer script
 ├── config.yaml                # User settings (Models, Prompt, Hardware)
-├── chat_memory.json           # Conversation history
+├── memory.json           # Conversation history
 ├── requirements.txt           # Python dependencies
 ├── whisper.cpp/               # Speech-to-Text engine
 ├── models/                    # ONNX models
@@ -111,17 +112,7 @@ python agent.py
 
 ## 📂 Configuration (`config.yaml`)
 
-You can modify the hardware behavior and personality in `config.yaml`. The `agent.py` script creates and reads this file (falling back to legacy `config.json` if present), but you can create it manually:
-
-```yaml
-text_model: gemma3:1b
-vision_model: moondream
-voice_model: en_0
-chat_memory: true
-camera_rotation: 0
-system_prompt_extras: >
-  You are a helpful robot assistant. Keep responses short and cute.
-```
+You can modify the hardware behavior and personality in `config.yaml`.
 
 ---
 

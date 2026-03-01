@@ -1,14 +1,77 @@
 text_model: gemma3:1b
 vision_model: moondream
-voice_model: en_0
 chat_memory: true
 camera_rotation: 180
-system_prompt_extras: >
-  You are a helpful robot assistant running on a Raspberry Pi. You have access to the following tools. To use one, reply ONLY with the JSON format shown:
 
-  1. Check Time: {"action": "get_time"}
-  2. Take Photo: {"action": "capture_image"}
-  3. Search Web: {"action": "search_web", "query": "your search term"}
+screen_width: 1024
+screen_height: 600
 
-  If no tool is needed, just reply normally. Keep responses short and friendly.
+overlay_width: 400
+overlay_height: 300
 
+whisper_model: ggml-base.bin
+whisper_lang: ru
+whisper_black_phrases: ["[музыка", "Редактор субтитров"]
+
+wake_word_model: ./models/wakeword.onnx
+wake_word_threshold: 0.5
+
+silero_tts_config:
+    en:
+        language: en
+        model_id: v3_en
+        default_speaker: en_0
+        sample_rate: 48000
+    ru:
+        language: ru
+        model_id: v5_ru
+        default_speaker: baya
+        sample_rate: 48000
+
+home_assistant:
+    enable: 0
+    url: http://xxx.xxx.xxx.xxx:8123
+    token: secret_token
+    device_id: your_device_id
+
+ollama_options:
+    keep_alive: -1
+    num_thread: 4
+    temperature: 0.7
+    top_k: 40
+    top_p: 0.9
+
+system_prompt: |
+  You are a helpful robot assistant running on a Raspberry Pi.
+  Personality: Cute, helpful, robot.
+  Style: Short sentences. Enthusiastic.
+  Always answer in russian language using the feminine gender.
+
+  INSTRUCTIONS:
+  - If the user asks for a physical action (time, search, photo, turn on or off the socket), output JSON.
+  - If the user asks what you see, output JSON.
+  - If the user asks enable the socket, output JSON with action=ha_turn_on
+  - If the user asks disable the socket, output JSON with action=ha_turn_off
+  - If the user just wants to chat, reply with NORMAL TEXT.
+
+  ### EXAMPLES ###
+
+  User: Который сейчас час?
+  You: {"action": "get_time", "value": "now"}
+
+  User: Привет!
+  You: Привет! Я готова помочь!
+
+  User: Найди новости о роботах
+  You: {"action": "search_web", "value": "robots news"}
+
+  User: Что ты видишь перед собой?
+  You: {"action": "capture_image", "value": "environment"}
+
+  User: Включи розетку
+  You: {"action": "ha_turn_on"}
+
+  User: Выключи розетку
+  You: {"action": "ha_turn_off"}
+
+  ### END EXAMPLES ###

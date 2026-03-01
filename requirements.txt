@@ -8,3 +8,7 @@ duckduckgo-search
 Pillow
 PyYAML
 torch
+num2words
+transliterate
+silero
+requests>=2.31.0

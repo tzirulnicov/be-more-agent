@@ -31,6 +31,9 @@ import wave
 import struct
 import yaml
 import torch
+from transliterate import translit
+from num2words import num2words
+from homeassistant_integration import HomeAssistantClient
 
 # Suppress harmless library warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
@@ -55,49 +58,24 @@ from ddgs import DDGS
 CONFIG_FILE = "config.yaml"
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
-WAKE_WORD_MODEL = "./models/wakeword.onnx"
-WAKE_WORD_THRESHOLD = 0.5
 
 # HARDWARE SETTINGS
 INPUT_DEVICE_NAME = None 
 
-DEFAULT_CONFIG = {
-    "text_model": "gemma3:1b",
-    "vision_model": "moondream",
-    "voice_model": "en_0",  # Silero speaker id
-    "chat_memory": True,
-    "camera_rotation": 0,
-    "system_prompt_extras": ""
+SILERO_MODELS = {
+    "en": None,
+    "ru": None,
 }
-
-# LLM SETTINGS
-OLLAMA_OPTIONS = {
-    'keep_alive': '-1',     
-    'num_thread': 4,
-    'temperature': 0.7,     
-    'top_k': 40,
-    'top_p': 0.9
-}
-
-# Silero TTS settings (initialized after config load)
-SILERO_LANGUAGE = "en"
-SILERO_MODEL_ID = "v3_en"
-SILERO_SAMPLE_RATE = 48000
-SILERO_DEVICE = "cpu"
-SILERO_MODEL = None
-SILERO_SPEAKER_ID = "en_0"
 
 def load_config():
-    config = DEFAULT_CONFIG.copy()
-    user_config = {}
+    config = {}
 
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
                 if isinstance(data, dict):
-                    user_config = data
-                    config.update(user_config)
+                    config = data
                 else:
                     print("Config Error: YAML root is not a mapping. Ignoring user config.")
         except Exception as e:
@@ -107,24 +85,55 @@ def load_config():
 CURRENT_CONFIG = load_config()
 TEXT_MODEL = CURRENT_CONFIG["text_model"]
 VISION_MODEL = CURRENT_CONFIG["vision_model"]
-SILERO_SPEAKER_ID = CURRENT_CONFIG.get("voice_model", SILERO_SPEAKER_ID) or SILERO_SPEAKER_ID
+
+def detect_language_for_tts(text: str) -> str:
+    """Very simple language heuristic: Cyrillic -> Russian, otherwise English."""
+    if re.search(r"[А-Яа-яЁё]", text):
+        return "ru"
+    return "en"
+
+def get_silero_model_for_lang(lang: str):
+    lang = "ru" if lang == "ru" else "en"
+    cfg = CURRENT_CONFIG['silero_tts_config'][lang]
+    if SILERO_MODELS[lang] is None:
+        try:
+            print(f"[INIT] Loading Silero TTS ({lang})...", flush=True)
+            model, _ = torch.hub.load(
+                repo_or_dir="snakers4/silero-models",
+                model="silero_tts",
+                language=cfg["language"],
+                speaker=cfg["model_id"],
+                trust_repo=True
+            )
+            device = torch.device('cpu')
+            SILERO_MODELS[lang] = model
+            print(f"[INIT] Silero TTS ({lang}) loaded.", flush=True)
+        except Exception as e:
+            print(f"[CRITICAL] Failed to load Silero TTS ({lang}): {e}", flush=True)
+            return None, cfg
+    return SILERO_MODELS[lang], cfg
+
 
 def init_silero_tts():
-    global SILERO_MODEL
-    if SILERO_MODEL is not None:
-        return
-    try:
-        print("[INIT] Loading Silero TTS...", flush=True)
-        model, _ = torch.hub.load(
-            repo_or_dir="snakers4/silero-models",
-            model="silero_tts",
-            language=SILERO_LANGUAGE,
-            speaker=SILERO_MODEL_ID,
-        )
-        SILERO_MODEL = model.to(SILERO_DEVICE)
-        print("[INIT] Silero TTS Loaded.", flush=True)
-    except Exception as e:
-        print(f"[CRITICAL] Failed to load Silero TTS: {e}", flush=True)
+    # Warm up at least the English model
+    get_silero_model_for_lang("ru")
+
+class HA:
+    def __init__(self, conf):
+        self.conf = conf
+        if conf['enable']:
+            self.ha = HomeAssistantClient(
+                base_url = conf['url'],
+                access_token = conf['token']
+            )
+
+    def turn_on(self):
+    	  if self.ha:
+    	      self.ha.turn_on(self.conf['device_id'])
+
+    def turn_off(self):
+    	  if self.ha:
+    	      self.ha.turn_off(self.conf['device_id'])
 
 class BotStates:
     IDLE = "idle"             
@@ -135,33 +144,7 @@ class BotStates:
     CAPTURING = "capturing" 
     WARMUP = "warmup"       
 
-# --- SYSTEM PROMPT ---
-BASE_SYSTEM_PROMPT = """You are a helpful robot assistant running on a Raspberry Pi.
-Personality: Cute, helpful, robot.
-Style: Short sentences. Enthusiastic.
-
-INSTRUCTIONS:
-- If the user asks for a physical action (time, search, photo), output JSON.
-- If the user just wants to chat, reply with NORMAL TEXT.
-
-### EXAMPLES ###
-
-User: What time is it?
-You: {"action": "get_time", "value": "now"}
-
-User: Hello!
-You: Hi! I am ready to help!
-
-User: Search for news about robots.
-You: {"action": "search_web", "value": "robots news"}
-
-User: What do you see right now?
-You: {"action": "capture_image", "value": "environment"}
-
-### END EXAMPLES ###
-"""
-
-SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + "\n\n" + CURRENT_CONFIG.get("system_prompt_extras", "")
+SYSTEM_PROMPT = CURRENT_CONFIG["system_prompt"]
 
 # Sound Directories
 greeting_sounds_dir = "sounds/greeting_sounds"
@@ -174,8 +157,8 @@ error_sounds_dir = "sounds/error_sounds"
 # =========================================================================
 
 class BotGUI:
-    BG_WIDTH, BG_HEIGHT = 800, 480 
-    OVERLAY_WIDTH, OVERLAY_HEIGHT = 400, 300 
+    BG_WIDTH, BG_HEIGHT = CURRENT_CONFIG['screen_width'], CURRENT_CONFIG['screen_height']
+    OVERLAY_WIDTH, OVERLAY_HEIGHT = CURRENT_CONFIG['overlay_width'],  CURRENT_CONFIG['overlay_height']
 
     def __init__(self, master):
         self.master = master
@@ -194,6 +177,7 @@ class BotGUI:
         self.animations = {}
         self.current_frame_index = 0
         self.current_overlay_image = None
+        self.ha = HA(CURRENT_CONFIG['home_assistant'])
         
         self.permanent_memory = self.load_chat_history()
         self.session_memory = []
@@ -213,20 +197,20 @@ class BotGUI:
         # --- WAKE WORD INITIALIZATION ---
         print("[INIT] Loading Wake Word...", flush=True)
         self.oww_model = None
-        if os.path.exists(WAKE_WORD_MODEL):
+        if os.path.exists(CURRENT_CONFIG['wake_word_model']):
             try:
-                self.oww_model = Model(wakeword_model_paths=[WAKE_WORD_MODEL])
+                self.oww_model = Model(wakeword_model_paths=[CURRENT_CONFIG['wake_word_model']])
                 print("[INIT] Wake Word Loaded.", flush=True)
             except TypeError:
                 try:
-                    self.oww_model = Model(wakeword_models=[WAKE_WORD_MODEL])
+                    self.oww_model = Model(wakeword_models=[CURRENT_CONFIG['wake_word_model']])
                     print("[INIT] Wake Word Loaded (New API).", flush=True)
                 except Exception as e:
                     print(f"[CRITICAL] Failed to load model: {e}")
             except Exception as e:
                 print(f"[CRITICAL] Failed to load model: {e}")
         else:
-            print(f"[CRITICAL] Model not found: {WAKE_WORD_MODEL}")
+            print(f"[CRITICAL] Model not found: {CURRENT_CONFIG['wake_word_model']}")
 
         # GUI Setup
         self.background_label = tk.Label(master)
@@ -409,13 +393,17 @@ class BotGUI:
         value = action_data.get("value") or action_data.get("query")
         
         VALID_TOOLS = {
-            "get_time", "search_web", "capture_image"
+            "get_time", "search_web", "capture_image", "ha_turn_on", "ha_turn_off"
         }
         
         ALIASES = {
-            "google": "search_web", "browser": "search_web", "news": "search_web",         
-            "search_news": "search_web", "look": "capture_image", "see": "capture_image", 
-            "check_time": "get_time"
+            "google": "search_web",
+            "browser": "search_web",
+            "news": "search_web",         
+            "search_news": "search_web",
+            "look": "capture_image",
+            "видишь": "capture_image", 
+            "check_time": "get_time",
         }
 
         action = ALIASES.get(raw_action, raw_action)
@@ -427,9 +415,18 @@ class BotGUI:
             return "INVALID_ACTION"
 
         if action == "get_time":
-            now = datetime.datetime.now().strftime("%I:%M %p")
-            return f"The current time is {now}."
-        
+            hours = int(datetime.datetime.now().strftime("%H"))
+            minutes = int(datetime.datetime.now().strftime("%M"))
+            return f"CHAT_FALLBACK::Текущее время {hours} {plural(hours, 'h')} {minutes} {plural(hours, 'm')}."
+
+        if action == "ha_turn_on":
+        	  self.ha.turn_on()
+        	  return f'CHAT_FALLBACK::Розетка включена'
+
+        if action == "ha_turn_off":
+        	  self.ha.turn_off()
+        	  return f'CHAT_FALLBACK::Розетка выключена'
+
         elif action == "search_web":
             print(f"Searching web for: {value}...", flush=True)
             try:
@@ -438,7 +435,7 @@ class BotGUI:
                     results = []
                     # 1. News search
                     try:
-                        results = list(ddgs.news(value, region='us-en', max_results=1))
+                        results = list(ddgs.news(value, region='ru-ru', max_results=1))
                         if results: 
                             print(f"[DEBUG] Found News: {results[0].get('title')}", flush=True)
                     except Exception as e: 
@@ -448,7 +445,7 @@ class BotGUI:
                     if not results:
                         print("[DEBUG] No news found, trying text search...", flush=True)
                         try: 
-                            results = list(ddgs.text(value, region='us-en', max_results=1))
+                            results = list(ddgs.text(value, region='ru-ru', max_results=1))
                             if results: 
                                 print(f"[DEBUG] Found Text: {results[0].get('title')}", flush=True)
                         except Exception as e:
@@ -569,8 +566,9 @@ class BotGUI:
 
                     prediction = self.oww_model.predict(audio_data)
                     for mdl in self.oww_model.prediction_buffer.keys():
-                        if list(self.oww_model.prediction_buffer[mdl])[-1] > WAKE_WORD_THRESHOLD:
-                            self.oww_model.reset() 
+                        if list(self.oww_model.prediction_buffer[mdl])[-1] > CURRENT_CONFIG['wake_word_threshold']:
+                            print( list(self.oww_model.prediction_buffer[mdl])[-1] )
+                            self.oww_model.reset()
                             return "WAKE"
         except Exception as e:
             print(f"Wake Word Stream Error: {e}")
@@ -587,7 +585,7 @@ class BotGUI:
 
         silence_threshold = 0.006
         silence_duration = 1.5
-        max_record_time = 30.0
+        max_record_time = 5.0
         buffer = []
         silent_chunks = 0
         chunk_duration = 0.05 
@@ -653,7 +651,7 @@ class BotGUI:
         print("Transcribing...", flush=True)
         try:
             result = subprocess.run(
-                ["./whisper.cpp/build/bin/whisper-cli", "-m", "./whisper.cpp/models/ggml-base.en.bin", "-l", "en", "-t", "4", "-f", filename],
+                ["./whisper.cpp/build/bin/whisper-cli", "-m", "./whisper.cpp/models/" + CURRENT_CONFIG["whisper_model"], "-l", CURRENT_CONFIG["whisper_lang"], "-t", "4", "-f", filename],
                 capture_output=True, text=True
             )
             transcription_lines = result.stdout.strip().split('\n')
@@ -662,6 +660,9 @@ class BotGUI:
                 if ']' in last_line: transcription = last_line.split("]")[1].strip()
                 else: transcription = last_line
             else: transcription = ""
+            for substr in CURRENT_CONFIG.get("whisper_black_phrases", []):
+                if transcription.find(substr) == 0:
+                    transcription = ""
             print(f"Heard: '{transcription}'", flush=True)
             return transcription.strip()
         except Exception as e:
@@ -682,6 +683,23 @@ class BotGUI:
             print(f"Camera Error: {e}")
             return None
 
+    def translate(self, text, lang_to):
+        accepted_langs = ['russian', 'english']
+        if (not text or lang_to not in accepted_langs):
+            return;
+
+        prompt = f"Translate to {lang_to} in one string, only one variant with no comments: "
+        messages = [{"role": "user", "content": prompt + text}]
+        full_response_buffer = ""
+
+        stream = ollama.chat(model=TEXT_MODEL, messages=messages, stream=True, options=CURRENT_CONFIG['ollama_options'])
+
+        for chunk in stream:
+#                if self.interrupted.is_set(): break 
+            content = chunk['message']['content']
+            full_response_buffer += content
+        return full_response_buffer
+
     # =========================================================================
     # 5. CHAT & RESPOND
     # =========================================================================
@@ -691,17 +709,21 @@ class BotGUI:
             self.session_memory = []
             self.permanent_memory = [{"role": "system", "content": SYSTEM_PROMPT}]
             self.save_chat_history()
-            with self.tts_queue_lock: 
+            with self.tts_queue_lock:
                 self.tts_queue.append("Okay. Memory wiped.")
             self.set_state(BotStates.IDLE, "Memory Wiped")
             return
 
         model_to_use = VISION_MODEL if img_path else TEXT_MODEL
+
+        # Normal streaming path (no special translation sandwich)
         self.set_state(BotStates.THINKING, "Thinking...", cam_path=img_path)
-        
+
         messages = []
         if img_path:
-            messages = [{"role": "user", "content": text, "images": [img_path]}]
+            print( self.translate(text, "english") )
+#            messages = [{"role": "user", "content": self.translate(text, "english"), "images": [img_path]}]
+            messages = [{"role": "user", "content": "What do you see on the image?", "images": [img_path]}]
         else:
             user_msg = {"role": "user", "content": text}
             messages = self.permanent_memory + self.session_memory + [user_msg]
@@ -713,13 +735,14 @@ class BotGUI:
         sentence_buffer = "" 
         
         try:
-            stream = ollama.chat(model=model_to_use, messages=messages, stream=True, options=OLLAMA_OPTIONS)
+            stream = ollama.chat(model=model_to_use, messages=messages, stream=True, options=CURRENT_CONFIG['ollama_options'])
             
             is_action_mode = False
             
             for chunk in stream:
                 if self.interrupted.is_set(): break 
                 content = chunk['message']['content']
+
                 full_response_buffer += content
                 
                 if '{"' in content or "action:" in content.lower():
@@ -735,13 +758,19 @@ class BotGUI:
                     self.append_to_text("BOT: ", newline=False)
 
                 self._stream_to_text(content)
-                
+
                 sentence_buffer += content
                 if any(punct in content for punct in ".!?\n"):
                     clean_sentence = sentence_buffer.strip()
-                    if clean_sentence and re.search(r'[a-zA-Z0-9]', clean_sentence):
+                    if clean_sentence and re.search(r'[a-zA-Zа-яА-Я0-9]', clean_sentence):
+                        print(f"result (en): {clean_sentence}")
+                        if img_path:
+                            clean_sentence = self.translate(clean_sentence, "russian")
+                        print(f"result (ru): {clean_sentence}")
                         with self.tts_queue_lock: self.tts_queue.append(clean_sentence)
                     sentence_buffer = ""
+
+            print(f"mode: {is_action_mode}, answer: {full_response_buffer}")
 
             if is_action_mode:
                 action_data = self.extract_json_from_text(full_response_buffer)
@@ -767,7 +796,7 @@ class BotGUI:
                             return 
 
                     elif tool_result == "INVALID_ACTION":
-                        fallback_text = "I am not sure how to do that."
+                        fallback_text = "Я не знаю, как это сделать."
                         self.thinking_sound_active.clear()
                         self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
                         self.append_to_text("BOT: ", newline=False)
@@ -775,7 +804,7 @@ class BotGUI:
                         with self.tts_queue_lock: self.tts_queue.append(fallback_text)
 
                     elif tool_result == "SEARCH_EMPTY":
-                        fallback_text = "I searched, but I couldn't find any news about that."
+                        fallback_text = "Я искала, но не смогла ничего найти"
                         self.thinking_sound_active.clear()
                         self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
                         self.append_to_text("BOT: ", newline=False)
@@ -783,7 +812,7 @@ class BotGUI:
                         with self.tts_queue_lock: self.tts_queue.append(fallback_text)
 
                     elif tool_result == "SEARCH_ERROR":
-                        fallback_text = "I cannot reach the internet right now."
+                        fallback_text = "Я не могу подключиться к Интернет"
                         self.thinking_sound_active.clear()
                         self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
                         self.append_to_text("BOT: ", newline=False)
@@ -792,14 +821,14 @@ class BotGUI:
 
                     elif tool_result:
                         summary_prompt = [
-                            {"role": "system", "content": "Summarize this result in one short sentence."},
+                            {"role": "system", "content": "Кратко изложи этот результат одним предложением."},
                             {"role": "user", "content": f"RESULT: {tool_result}\nUser Question: {text}"}
                         ]
                         
                         self.set_state(BotStates.THINKING, "Reading...")
                         self.thinking_sound_active.set()
                         
-                        final_resp = ollama.chat(model=model_to_use, messages=summary_prompt, stream=False, options=OLLAMA_OPTIONS)
+                        final_resp = ollama.chat(model=model_to_use, messages=summary_prompt, stream=False, options=CURRENT_CONFIG['ollama_options'])
                         final_text = final_resp['message']['content']
                         
                         self.thinking_sound_active.clear()
@@ -839,40 +868,50 @@ class BotGUI:
 
     def speak(self, text):
         clean = re.sub(r"[^\w\s,.!?:-]", "", text)
+
         if not clean.strip():
             return
 
         print(f"[SILERO SPEAKING] '{clean}'", flush=True)
 
         try:
-            init_silero_tts()
-            if SILERO_MODEL is None:
-                print("Silero TTS is not available.", flush=True)
+            # Choose language based on presence of Cyrillic letters
+            lang = detect_language_for_tts(clean)
+
+            model, cfg = get_silero_model_for_lang(lang)
+            if model is None:
+                print("Silero TTS is not available for language:", lang, flush=True)
                 return
 
-            speaker_id = CURRENT_CONFIG.get("voice_model", SILERO_SPEAKER_ID) or SILERO_SPEAKER_ID
-            audio = SILERO_MODEL.apply_tts(
+            speaker_id = cfg["default_speaker"]
+            sample_rate = cfg["sample_rate"]
+
+            clean  = re.sub(r'(\d+)', lambda m: f"{num2words(m.group(1), lang=lang)}", clean)
+            if lang == "ru" and re.search(r'[a-zA-Z]', clean):
+                clean = translit(clean, 'ru')
+
+            audio = model.apply_tts(
                 text=clean,
                 speaker=speaker_id,
-                sample_rate=SILERO_SAMPLE_RATE,
+                sample_rate=sample_rate,
             )
 
             audio_np = audio.detach().cpu().numpy()
             self.current_volume = float(np.max(np.abs(audio_np))) if audio_np.size else 0.0
 
             try:
-                sd.check_output_settings(device=None, samplerate=SILERO_SAMPLE_RATE)
-                playback_rate = SILERO_SAMPLE_RATE
+                sd.check_output_settings(device=None, samplerate=sample_rate)
+                playback_rate = sample_rate
             except Exception:
                 try:
                     device_info = sd.query_devices(kind='output')
                     native_rate = int(device_info['default_samplerate'])
                 except Exception:
-                    native_rate = SILERO_SAMPLE_RATE
+                    native_rate = sample_rate
 
                 playback_rate = native_rate
-                if native_rate != SILERO_SAMPLE_RATE and audio_np.size:
-                    num_samples = int(len(audio_np) * (native_rate / SILERO_SAMPLE_RATE))
+                if native_rate != sample_rate and audio_np.size:
+                    num_samples = int(len(audio_np) * (native_rate / sample_rate))
                     audio_np = scipy.signal.resample(audio_np, num_samples).astype(np.float32)
 
             sd.play(audio_np, playback_rate)
@@ -937,6 +976,20 @@ class BotGUI:
         if len(conv) > 10: conv = conv[-10:]
         with open(MEMORY_FILE, "w") as f: 
             json.dump([full[0]] + conv, f, indent=4)
+
+def plural(value: int, opt="h") -> str:
+    answer = {
+        "d": ['день', 'дня', 'дней'],
+        "h": ['час', 'часа', 'часов'],
+        "m": ['минута', 'минуты', 'минут']}
+
+    if all((value % 10 == 1, value % 100 != 11)):
+        return answer[opt][0]
+
+    elif all((2 <= value % 10 <= 4, any((value % 100 < 10, value % 100 >= 20)))):
+        return answer[opt][1]
+
+    return answer[opt][2]
 
 if __name__ == "__main__":
     print("--- SYSTEM STARTING ---", flush=True)
