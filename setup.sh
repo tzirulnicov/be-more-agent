@@ -11,7 +11,7 @@ echo -e "${GREEN}🤖 Pi Local Assistant Setup Script${NC}"
 # 1. Install System Dependencies (The "Hidden" Requirements)
 echo -e "${YELLOW}[1/6] Installing System Tools (apt)...${NC}"
 sudo apt update
-sudo apt install -y python3-tk libasound2-dev libportaudio2 libatlas-base-dev cmake build-essential espeak-ng git
+sudo apt install -y python3-tk libasound2-dev libportaudio2 libatlas-base-dev cmake build-essential espeak-ng git rpicam-apps
 
 # 2. Create Folders
 echo -e "${YELLOW}[2/6] Creating Folders...${NC}"
