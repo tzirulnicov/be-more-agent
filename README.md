@@ -74,7 +74,7 @@ be-more-agent/
 Ensure your Raspberry Pi OS is up to date.
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install git -y
+sudo apt install -y python3-tk libasound2-dev libportaudio2 libatlas-base-dev cmake build-essential espeak-ng git rpicam-apps
 ```
 
 ### 2. Install Ollama
@@ -88,22 +88,38 @@ ollama pull gemma3:1b
 ollama pull moondream
 ```
 
-### 3. Clone & Setup
+### 3. Speaker wiring and configuration
+Follow this tutorial
+
+> For now, don't activate `/dev/zero` when they ask
+
+https://learn.adafruit.com/adafruit-max98357-i2s-class-d-mono-amp?view=all
+
+### 4. Clone repo
 ```bash
 git clone https://github.com/tzirulnicov/be-more-agent.git
-cd be-more-agent
-chmod +x setup.sh
-./setup.sh
-```
-*The setup script will install system libraries, create necessary folders, download Piper TTS, and set up the Python virtual environment.*
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt```
 
-### 4. Configure the Wake Word
+### 5. Install Whisper.cpp
+```bash
+cd be-more-agent
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+sh ./models/download-ggml-model.sh base
+cmake -B build
+cmake --build build --config Release
+```
+
+### 5. Configure the Wake Word
 You can use default wake word ("Alexa"). To use your own:
 1. Train a model at [OpenWakeWord](https://github.com/dscripka/openWakeWord).
 2. Place the `.onnx` file in the models folder.
 3. Rename it to `wakeword.onnx`.
 
-### 5. Run the Agent
+### 6. Run the Agent
 ```bash
 source venv/bin/activate
 python agent.py
