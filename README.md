@@ -95,13 +95,16 @@ Follow this tutorial
 
 https://learn.adafruit.com/adafruit-max98357-i2s-class-d-mono-amp?view=all
 
+Then relpace your /etc/asound.conf with be-more-agent/asound.conf from repo to make the microphone and speaker work together.
+
 ### 4. Clone repo
 ```bash
 git clone https://github.com/tzirulnicov/be-more-agent.git
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt```
+pip install -r requirements.txt
+```
 
 ### 5. Install Whisper.cpp
 ```bash
@@ -113,13 +116,13 @@ cmake -B build
 cmake --build build --config Release
 ```
 
-### 5. Configure the Wake Word
+### 6. Configure the Wake Word
 You can use default wake word ("Alexa"). To use your own:
 1. Train a model at [OpenWakeWord](https://github.com/dscripka/openWakeWord).
 2. Place the `.onnx` file in the models folder.
 3. Rename it to `wakeword.onnx`.
 
-### 6. Run the Agent
+### 7. Run the Agent
 ```bash
 source venv/bin/activate
 python agent.py
