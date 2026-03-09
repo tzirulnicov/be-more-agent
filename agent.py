@@ -59,9 +59,6 @@ CONFIG_FILE = "config.yaml"
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
 
-# HARDWARE SETTINGS
-INPUT_DEVICE_NAME = None 
-
 SILERO_MODELS = {
     "en": None,
     "ru": None,
@@ -85,6 +82,7 @@ def load_config():
 CURRENT_CONFIG = load_config()
 TEXT_MODEL = CURRENT_CONFIG["text_model"]
 VISION_MODEL = CURRENT_CONFIG["vision_model"]
+INPUT_DEVICE_NAME = CURRENT_CONFIG["input_device"]
 
 def detect_language_for_tts(text: str) -> str:
     """Very simple language heuristic: Cyrillic -> Russian, otherwise English."""

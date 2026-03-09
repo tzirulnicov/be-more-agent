@@ -9,6 +9,8 @@ screen_height: 600
 overlay_width: 400
 overlay_height: 300
 
+input device: 2
+
 whisper_model: ggml-base.bin
 whisper_lang: ru
 whisper_black_phrases: ["[музыка", "Редактор субтитров"]
